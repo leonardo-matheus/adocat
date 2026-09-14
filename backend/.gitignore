@@ -1,0 +1,7 @@
+/vendor/
+/tools/
+/.env
+/var/*.sqlite
+/var/*.log
+/var/rate-limit/
+/.phpunit.cache/
