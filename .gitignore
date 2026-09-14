@@ -11,7 +11,8 @@ playwright-report/
 test-results/
 backend/vendor/
 backend/.env
-backend/var/
+backend/var/*
+!backend/var/.gitkeep
 backend/tools/
 backend/.phpunit.cache/
 output/qa/

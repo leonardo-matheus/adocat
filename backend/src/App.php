@@ -111,6 +111,7 @@ final class App
         $this->app->get('/api/pets/{id}', fn(ServerRequestInterface $r) => $this->getPet($r));
         $this->app->get('/api/campaigns', fn() => $this->listCampaigns(true));
         $this->app->get('/api/config', fn() => new JsonResponse(['data' => $this->publicConfig()]));
+        $this->app->get('/api/content', fn() => $this->publicContent());
         $this->app->post('/api/adoptions', fn(ServerRequestInterface $r) => $this->createAdoption($r));
         $this->app->post('/api/volunteers', fn(ServerRequestInterface $r) => $this->createVolunteer($r));
         $this->app->get('/api/auth/session', fn() => $this->sessionInfo());
@@ -129,6 +130,15 @@ final class App
         $this->app->get('/api/admin/campaigns', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->listCampaigns(false)));
         $this->app->post('/api/admin/campaigns', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->saveCampaign($r)));
         $this->app->patch('/api/admin/campaigns/{id}', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->saveCampaign($r, (string)$r->getAttribute('id'))));
+        $this->app->get('/api/admin/content', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->adminContent()));
+        $this->app->patch('/api/admin/content', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->saveContent($r)));
+        $this->app->post('/api/admin/content/publish', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->publishContent($r)));
+        $this->app->post('/api/admin/content/discard', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->discardContent($r)));
+        $this->app->get('/api/admin/media', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->listMedia()));
+        $this->app->post('/api/admin/media', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->createMedia($r)));
+        $this->app->patch('/api/admin/media/{id}', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->updateMedia($r)));
+        $this->app->delete('/api/admin/media/{id}', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->deleteMedia($r)));
+        $this->app->get('/api/admin/integrations', fn(ServerRequestInterface $r) => $this->admin($r, fn() => $this->integrationReadiness()));
         $this->app->pipe(new DispatchMiddleware());
         $this->app->pipe(fn() => $this->error('Rota não encontrada.', 404));
     }
@@ -320,7 +330,10 @@ final class App
     {
         if(session_status()===PHP_SESSION_ACTIVE)return;
         ini_set('session.use_strict_mode','1');ini_set('session.use_only_cookies','1');
-        session_name('adocat_admin');session_set_cookie_params(['httponly'=>true,'secure'=>filter_var($this->env['SESSION_SECURE']??'false',FILTER_VALIDATE_BOOLEAN),'samesite'=>'Lax','path'=>'/']);session_start();
+        $secure=filter_var($this->env['SESSION_SECURE']??'false',FILTER_VALIDATE_BOOLEAN);
+        $sameSite=(string)($this->env['SESSION_SAME_SITE']??'Lax');
+        if(!in_array($sameSite,['Lax','Strict','None'],true)||($sameSite==='None'&&!$secure))$sameSite='Lax';
+        session_name('adocat_admin');session_set_cookie_params(['httponly'=>true,'secure'=>$secure,'samesite'=>$sameSite,'path'=>'/']);session_start();
     }
 
     private function listSubmissions(string $table): JsonResponse
@@ -356,6 +369,270 @@ final class App
         try{$m=new PHPMailer(true);$m->isSMTP();$m->CharSet='UTF-8';$m->Timeout=8;$m->Host=$this->env['SMTP_HOST'];$m->Port=(int)($this->env['SMTP_PORT']??587);$m->SMTPAuth=($this->env['SMTP_USER']??'')!=='';$m->Username=$this->env['SMTP_USER']??'';$m->Password=$this->env['SMTP_PASSWORD']??'';$m->SMTPSecure=$this->env['SMTP_ENCRYPTION']??PHPMailer::ENCRYPTION_STARTTLS;$m->setFrom($this->env['MAIL_FROM']??'adocat.adocao@gmail.com');$m->addAddress($this->env['MAIL_TO']??'adocat.adocao@gmail.com');$m->Subject=$subject;$m->Body=$body;$m->send();}catch(Throwable $e){error_log('AdoCat SMTP notification failed: '.$e->getMessage());}
     }
 
+    private function publicContent(): JsonResponse
+    {
+        $state = $this->contentState();
+        $document = $state['published'];
+        if (is_array($document['articles'])) {
+            $document['articles'] = array_values(array_filter($document['articles'], fn(array $article) => $article['status'] === 'published'));
+        }
+        return new JsonResponse(['data' => $document]);
+    }
+
+    private function adminContent(): JsonResponse
+    {
+        return new JsonResponse(['data' => $this->contentState()]);
+    }
+
+    private function saveContent(ServerRequestInterface $request): JsonResponse
+    {
+        $payload = $this->json($request);
+        $revision = $this->revision($payload);
+        $document = $this->validateContentDocument($payload['document'] ?? null);
+        $encoded = json_encode($document, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        if (strlen($encoded) > 1048576) {
+            throw new ApiException('O conteúdo ultrapassa o limite de 1 MB.', 422, ['document' => 'Reduza o conteúdo antes de salvar.']);
+        }
+        $now = gmdate('Y-m-d H:i:s');
+        $statement = $this->db->prepare('UPDATE site_content SET draft_json=?, revision=revision+1, updated_at=? WHERE id=1 AND revision=?');
+        $statement->execute([$encoded, $now, $revision]);
+        $this->assertRevisionUpdated($statement->rowCount());
+        return $this->adminContent();
+    }
+
+    private function publishContent(ServerRequestInterface $request): JsonResponse
+    {
+        $revision = $this->revision($this->json($request));
+        $now = gmdate('Y-m-d H:i:s');
+        $statement = $this->db->prepare('UPDATE site_content SET published_json=draft_json, revision=revision+1, published_at=? WHERE id=1 AND revision=?');
+        $statement->execute([$now, $revision]);
+        $this->assertRevisionUpdated($statement->rowCount());
+        return $this->adminContent();
+    }
+
+    private function discardContent(ServerRequestInterface $request): JsonResponse
+    {
+        $revision = $this->revision($this->json($request));
+        $now = gmdate('Y-m-d H:i:s');
+        $statement = $this->db->prepare('UPDATE site_content SET draft_json=published_json, revision=revision+1, updated_at=? WHERE id=1 AND revision=?');
+        $statement->execute([$now, $revision]);
+        $this->assertRevisionUpdated($statement->rowCount());
+        return $this->adminContent();
+    }
+
+    private function listMedia(): JsonResponse
+    {
+        $rows = $this->db->query('SELECT id,url,name,alt,created_at FROM media_library ORDER BY created_at DESC, id DESC')->fetchAll(PDO::FETCH_ASSOC);
+        return new JsonResponse(['data' => array_map(fn(array $row) => $this->mediaRecord($row), $rows)]);
+    }
+
+    private function createMedia(ServerRequestInterface $request): JsonResponse
+    {
+        $data = $this->json($request);
+        $fields = [];
+        $url = $this->stringField($data, 'url', 2048, $fields);
+        $name = $this->stringField($data, 'name', 200, $fields);
+        $alt = $this->stringField($data, 'alt', 500, $fields, true);
+        if ($url !== '' && !$this->safeImageUrl($url)) $fields['url'] = 'Use uma imagem HTTPS ou um caminho em /images ou /icons.';
+        if ($fields !== []) throw new ApiException('Revise os campos informados.', 422, $fields);
+        $id = $this->uuid();
+        $createdAt = gmdate('Y-m-d H:i:s');
+        $statement = $this->db->prepare('INSERT INTO media_library (id,url,name,alt,created_at) VALUES (?,?,?,?,?)');
+        $statement->execute([$id, $url, $name, $alt, $createdAt]);
+        return new JsonResponse(['data' => ['id'=>$id,'url'=>$url,'name'=>$name,'alt'=>$alt,'createdAt'=>$this->contentTimestamp($createdAt)]], 201);
+    }
+
+    private function updateMedia(ServerRequestInterface $request): JsonResponse
+    {
+        $data = $this->json($request);
+        $fields = [];
+        $name = $this->stringField($data, 'name', 200, $fields);
+        $alt = $this->stringField($data, 'alt', 500, $fields, true);
+        if ($fields !== []) throw new ApiException('Revise os campos informados.', 422, $fields);
+        $id = (string)$request->getAttribute('id');
+        $statement = $this->db->prepare('UPDATE media_library SET name=?, alt=? WHERE id=?');
+        $statement->execute([$name, $alt, $id]);
+        if (!$this->exists('media_library', $id)) throw new ApiException('Mídia não encontrada.', 404);
+        $statement = $this->db->prepare('SELECT id,url,name,alt,created_at FROM media_library WHERE id=?');
+        $statement->execute([$id]);
+        return new JsonResponse(['data' => $this->mediaRecord($statement->fetch(PDO::FETCH_ASSOC))]);
+    }
+
+    private function deleteMedia(ServerRequestInterface $request): JsonResponse
+    {
+        return $this->deleteRecord('media_library', (string)$request->getAttribute('id'));
+    }
+
+    private function integrationReadiness(): JsonResponse
+    {
+        $smtp = trim((string)($this->env['SMTP_HOST'] ?? '')) !== '' && trim((string)($this->env['MAIL_FROM'] ?? '')) !== '' && trim((string)($this->env['MAIL_TO'] ?? '')) !== '';
+        $storage = true;
+        foreach (['R2_ENDPOINT','R2_ACCESS_KEY','R2_SECRET_KEY','R2_BUCKET','R2_PUBLIC_URL'] as $key) {
+            $storage = $storage && trim((string)($this->env[$key] ?? '')) !== '';
+        }
+        $config = $this->publicConfig();
+        return new JsonResponse(['data' => [
+            'mode' => 'api',
+            'smtp' => $smtp,
+            'storage' => $storage,
+            'pix' => $config['pixConfigured'],
+            'origin' => (string)($this->env['APP_ORIGIN'] ?? 'http://localhost:5173'),
+        ]]);
+    }
+
+    private function contentState(): array
+    {
+        $row = $this->db->query('SELECT draft_json,published_json,revision,updated_at,published_at FROM site_content WHERE id=1')->fetch();
+        if (!$row) throw new ApiException('Execute as migrações do banco para ativar o conteúdo.', 503);
+        return [
+            'draft' => $this->decodeContent((string)$row['draft_json']),
+            'published' => $this->decodeContent((string)$row['published_json']),
+            'revision' => (int)$row['revision'],
+            'updatedAt' => $this->contentTimestamp($row['updated_at']),
+            'publishedAt' => $this->contentTimestamp($row['published_at']),
+        ];
+    }
+
+    private function decodeContent(string $json): array
+    {
+        $document = json_decode($json, true);
+        if (!is_array($document)) throw new ApiException('Conteúdo armazenado inválido.', 500);
+        $document['values'] = (object)($document['values'] ?? []);
+        return $document;
+    }
+
+    private function contentTimestamp(?string $value): ?string
+    {
+        if ($value === null) return null;
+        return (new \DateTimeImmutable($value, new \DateTimeZone('UTC')))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
+    }
+
+    private function mediaRecord(array $row): array
+    {
+        $record = $this->camelize($row);
+        $record['createdAt'] = $this->contentTimestamp($row['created_at']);
+        return $record;
+    }
+
+    private function revision(array $payload): int
+    {
+        if (!isset($payload['revision']) || !is_int($payload['revision']) || $payload['revision'] < 1) {
+            throw new ApiException('Informe a revisão atual.', 422, ['revision' => 'Revisão inválida.']);
+        }
+        return $payload['revision'];
+    }
+
+    private function assertRevisionUpdated(int $changed): void
+    {
+        if ($changed !== 1) throw new ApiException('O conteúdo foi alterado em outra sessão. Recarregue antes de continuar.', 409);
+    }
+
+    private function validateContentDocument(mixed $document): array
+    {
+        if (!is_array($document)) throw new ApiException('Documento de conteúdo inválido.', 422, ['document' => 'Informe um documento válido.']);
+        $fields = [];
+        $values = $document['values'] ?? null;
+        if (!is_array($values) || ($values !== [] && array_is_list($values)) || count($values) > 1000) {
+            $fields['values'] = 'Informe até 1.000 campos de conteúdo.';
+            $values = [];
+        }
+        foreach ($values as $key => $value) {
+            if (!is_string($key) || !preg_match('/^[a-zA-Z0-9_.-]{1,150}$/', $key) || !is_string($value) || mb_strlen($value) > 20000) {
+                $fields['values'] = 'Há uma chave ou texto inválido.';
+                break;
+            }
+            if (preg_match('/(?:href|url)$/i', $key) && $value !== '' && !$this->safeLink($value)) $fields['values'] = 'Há um link inseguro.';
+            if (preg_match('/(?:image|logo)$/i', $key) && $value !== '' && !$this->safeImageUrl($value)) $fields['values'] = 'Há uma imagem inválida.';
+        }
+
+        $articles = $document['articles'] ?? null;
+        if ($articles !== null && (!is_array($articles) || !array_is_list($articles) || count($articles) > 100)) {
+            $fields['articles'] = 'Informe até 100 artigos.';
+            $articles = null;
+        }
+        $slugs = [];
+        if (is_array($articles)) foreach ($articles as $index => &$article) {
+            if (!is_array($article)) {$fields["articles.$index"] = 'Artigo inválido.'; continue;}
+            foreach (['slug'=>150,'category'=>100,'title'=>250,'excerpt'=>1000,'image'=>2048,'readTime'=>80,'status'=>20] as $key=>$max) {
+                if (!isset($article[$key]) || !is_string($article[$key]) || trim($article[$key]) === '' || mb_strlen($article[$key]) > $max) $fields["articles.$index.$key"] = 'Campo inválido.';
+            }
+            $slug = $article['slug'] ?? '';
+            if (is_string($slug) && (!preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) || isset($slugs[$slug]))) $fields["articles.$index.slug"] = 'Use um slug único com letras minúsculas, números e hífens.';
+            if (is_string($slug)) $slugs[$slug] = true;
+            if (isset($article['status']) && !in_array($article['status'], ['draft','published'], true)) $fields["articles.$index.status"] = 'Status inválido.';
+            if (isset($article['image']) && is_string($article['image']) && !$this->safeImageUrl($article['image'])) $fields["articles.$index.image"] = 'Imagem inválida.';
+            if (!isset($article['sections']) || !is_array($article['sections']) || !array_is_list($article['sections']) || count($article['sections']) > 50) {$fields["articles.$index.sections"] = 'Informe até 50 seções.'; continue;}
+            foreach ($article['sections'] as $sectionIndex => $section) {
+                if (!is_array($section) || !isset($section['title'],$section['text']) || !is_string($section['title']) || !is_string($section['text']) || trim($section['title']) === '' || trim($section['text']) === '' || mb_strlen($section['title']) > 250 || mb_strlen($section['text']) > 20000) $fields["articles.$index.sections.$sectionIndex"] = 'Seção inválida.';
+            }
+            $article = array_intersect_key($article, array_flip(['slug','category','title','excerpt','image','readTime','sections','status']));
+        }
+        unset($article);
+
+        $navigation = $document['navigation'] ?? null;
+        if ($navigation !== null && (!is_array($navigation) || !array_is_list($navigation) || count($navigation) > 12)) {$fields['navigation'] = 'Informe até 12 itens de navegação.'; $navigation = null;}
+        $ids = [];
+        if (is_array($navigation)) foreach ($navigation as $index => &$item) {
+            if (!is_array($item)) {$fields["navigation.$index"] = 'Item inválido.'; continue;}
+            foreach (['id'=>80,'label'=>80,'href'=>2048] as $key=>$max) if (!isset($item[$key]) || !is_string($item[$key]) || trim($item[$key]) === '' || mb_strlen($item[$key]) > $max) $fields["navigation.$index.$key"] = 'Campo inválido.';
+            if (!isset($item['visible']) || !is_bool($item['visible'])) $fields["navigation.$index.visible"] = 'Informe verdadeiro ou falso.';
+            if (!isset($item['newTab']) || !is_bool($item['newTab'])) $fields["navigation.$index.newTab"] = 'Informe verdadeiro ou falso.';
+            if (isset($item['href']) && is_string($item['href']) && !$this->safeLink($item['href'])) $fields["navigation.$index.href"] = 'Link inválido.';
+            $id = $item['id'] ?? '';
+            if (is_string($id) && isset($ids[$id])) $fields["navigation.$index.id"] = 'Identificador duplicado.';
+            if (is_string($id)) $ids[$id] = true;
+            $item = array_intersect_key($item, array_flip(['id','label','href','visible','newTab']));
+        }
+        unset($item);
+
+        $integrations = $document['integrations'] ?? null;
+        $integrationKeys = ['whatsapp','email','instagram','facebook','pixKey','donationRecipient','donationCity'];
+        if (!is_array($integrations)) {$fields['integrations'] = 'Integrações inválidas.'; $integrations = [];}
+        foreach ($integrationKeys as $key) if (!isset($integrations[$key]) || !is_string($integrations[$key])) $fields["integrations.$key"] = 'Campo inválido.';
+        $whatsapp = $integrations['whatsapp'] ?? '';
+        if (is_string($whatsapp) && $whatsapp !== '' && !preg_match('/^\d{10,15}$/', $whatsapp)) $fields['integrations.whatsapp'] = 'Use de 10 a 15 dígitos, incluindo DDI.';
+        $email = $integrations['email'] ?? '';
+        if (is_string($email) && $email !== '' && (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 254)) $fields['integrations.email'] = 'E-mail inválido.';
+        foreach (['instagram','facebook'] as $key) if (($integrations[$key] ?? '') !== '' && !$this->safeHttpUrl((string)$integrations[$key])) $fields["integrations.$key"] = 'Use uma URL HTTP ou HTTPS.';
+        foreach (['pixKey'=>77,'donationRecipient'=>25,'donationCity'=>15] as $key=>$max) if (isset($integrations[$key]) && is_string($integrations[$key]) && mb_strlen($integrations[$key]) > $max) $fields["integrations.$key"] = 'Texto muito longo.';
+        if (($integrations['pixKey'] ?? '') !== '' && (trim((string)($integrations['donationRecipient'] ?? '')) === '' || trim((string)($integrations['donationCity'] ?? '')) === '')) $fields['integrations.pixKey'] = 'Informe também favorecido e cidade.';
+
+        if ($fields !== []) throw new ApiException('Revise o conteúdo informado.', 422, $fields);
+        return ['values'=>(object)$values,'articles'=>$articles,'navigation'=>$navigation,'integrations'=>array_intersect_key($integrations, array_flip($integrationKeys))];
+    }
+
+    private function stringField(array $data, string $key, int $max, array &$fields, bool $allowEmpty = false): string
+    {
+        $value = $data[$key] ?? null;
+        if (!is_string($value) || (!$allowEmpty && trim($value) === '') || mb_strlen($value) > $max) {
+            $fields[$key] = 'Texto inválido ou muito longo.';
+            return '';
+        }
+        return trim($value);
+    }
+
+    private function safeLink(string $url): bool
+    {
+        if ($url === '' || str_starts_with($url, '//') || str_contains($url, '\\') || preg_match('/[\x00-\x20\x7F]/', $url)) return false;
+        if (str_starts_with($url, '/') || preg_match('/^#[\w-]+$/', $url) === 1) return true;
+        $scheme = strtolower((string)parse_url($url, PHP_URL_SCHEME));
+        if (in_array($scheme, ['http','https'], true)) return $this->safeHttpUrl($url);
+        if ($scheme === 'mailto') return filter_var(substr($url, 7), FILTER_VALIDATE_EMAIL) !== false;
+        return $scheme === 'tel' && preg_match('/^tel:\+?[0-9()-]+$/i', $url) === 1;
+    }
+
+    private function safeHttpUrl(string $url): bool
+    {
+        if (str_contains($url, '\\') || preg_match('/[\x00-\x20\x7F]/', $url) || filter_var($url, FILTER_VALIDATE_URL) === false) return false;
+        $parts = parse_url($url);
+        return is_array($parts) && !isset($parts['user']) && !isset($parts['pass']) && isset($parts['host']) && in_array(strtolower((string)($parts['scheme'] ?? '')), ['http','https'], true);
+    }
+
+    private function safeImageUrl(string $url): bool
+    {
+        return $this->safeHttpUrl($url) || (!str_contains($url, '\\') && preg_match('#^/(?:images|icons)/[^\x00-\x20\x7F]*$#', $url) === 1);
+    }
+
     private function rateLimit(ServerRequestInterface $r,string $scope,?int $override=null): void
     {
         $dir=dirname(__DIR__).'/var/rate-limit';if(!is_dir($dir)&&!mkdir($dir,0700,true)&&!is_dir($dir))throw new ApiException('Rate limit indisponível.',503);
@@ -377,7 +654,15 @@ final class App
     private function deleteRecord(string $table,string $id): JsonResponse {if($table==='pets'){ $s=$this->db->prepare('SELECT 1 FROM adoptions WHERE pet_id=? LIMIT 1');$s->execute([$id]);if($s->fetchColumn())throw new ApiException('Este animal possui candidaturas. Altere seu status para preservar o histórico.',409);}$s=$this->db->prepare("DELETE FROM $table WHERE id=?");$s->execute([$id]);if($s->rowCount()===0)throw new ApiException('Registro não encontrado.',404);return new JsonResponse(['data'=>null]);}
     private function uuid(): string {$b=random_bytes(16);$b[6]=chr((ord($b[6])&0x0f)|0x40);$b[8]=chr((ord($b[8])&0x3f)|0x80);return vsprintf('%s%s-%s-%s-%s-%s%s%s',str_split(bin2hex($b),4));}
     private function camelize(array $row): array {$out=[];foreach($row as $k=>$v){$out[preg_replace_callback('/_([a-z])/',fn($m)=>strtoupper($m[1]),$k)]=$v;}return$out;}
-    private function publicConfig(): array {$key=trim($this->env['PIX_KEY']??'');$recipient=trim($this->env['DONATION_RECIPIENT']??'');$city=trim($this->env['DONATION_CITY']??'');$configured=$key!==''&&$recipient!==''&&$city!=='';return ['pixConfigured'=>$configured,'pixKey'=>$configured?$key:null,'donationRecipient'=>$configured?$recipient:null,'donationCity'=>$configured?$city:null];}
+    private function publicConfig(): array
+    {
+        $key=trim($this->env['PIX_KEY']??'');$recipient=trim($this->env['DONATION_RECIPIENT']??'');$city=trim($this->env['DONATION_CITY']??'');
+        try {
+            $state=$this->contentState();$integrations=$state['published']['integrations']??[];
+            if($state['publishedAt']!==null){$key=trim((string)($integrations['pixKey']??''));$recipient=trim((string)($integrations['donationRecipient']??''));$city=trim((string)($integrations['donationCity']??''));}
+        } catch (Throwable) {}
+        $configured=$key!==''&&$recipient!==''&&$city!=='';return ['pixConfigured'=>$configured,'pixKey'=>$configured?$key:null,'donationRecipient'=>$configured?$recipient:null,'donationCity'=>$configured?$city:null];
+    }
 }
 
 final class ApiException extends RuntimeException

@@ -19,7 +19,9 @@ O `.env.example` já aponta para SQLite local. Execute os comandos a partir de `
 
 Em produção, crie um banco MySQL 8 com `utf8mb4`, configure `DB_DSN=mysql:host=127.0.0.1;dbname=adocat;charset=utf8mb4`, `DB_USER` e `DB_PASSWORD`, e então execute `php -f bin/migrate.php`. Sirva somente `backend/public` no caminho `/api`, na mesma origem do frontend; veja [a configuração Apache](../deploy/apache.example.conf).
 
-Defina `ADMIN_EMAIL` e `ADMIN_PASSWORD_HASH` (gerado por `php -r "echo password_hash('senha', PASSWORD_DEFAULT);"`) antes de usar o painel. `ADMIN_PASSWORD` funciona apenas em desenvolvimento e causa erro de configuração se estiver definido com `APP_ENV=production`. Cookies usam HttpOnly, SameSite=Lax, IDs estritos e expiração por inatividade; ative `SESSION_SECURE=true` sob HTTPS. Toda escrita administrativa exige o token retornado por `GET /api/auth/session` no header `X-CSRF-Token`.
+Defina `ADMIN_EMAIL` e `ADMIN_PASSWORD_HASH` (gerado por `php -r "echo password_hash('senha', PASSWORD_DEFAULT);"`) antes de usar o painel. `ADMIN_PASSWORD` funciona apenas em desenvolvimento e causa erro de configuração se estiver definido com `APP_ENV=production`. Cookies usam HttpOnly, SameSite configurável, IDs estritos e expiração por inatividade; ative `SESSION_SECURE=true` sob HTTPS. Toda escrita administrativa exige o token retornado por `GET /api/auth/session` no header `X-CSRF-Token`.
+
+O padrão `SESSION_SAME_SITE=Lax` atende à implantação na mesma origem. Para frontend e API em domínios diferentes, use HTTPS, `SESSION_SECURE=true`, `SESSION_SAME_SITE=None` e `APP_ORIGIN` com a origem exata do frontend. O cliente envia `credentials: "include"`. Alguns navegadores bloqueiam cookies de terceiros; um proxy no mesmo domínio evita essa dependência. `None` só é aplicado junto de cookie seguro.
 
 SMTP é opcional. Quando configurado, novos formulários geram uma notificação UTF-8 sem incluir PII no log. Falha de notificação é registrada e o formulário permanece salvo. Upload administrativo exige todas as variáveis `R2_*`; sem elas a API responde `503`, e nunca retorna uma URL fictícia. O conteúdo completo é validado como JPEG, PNG ou WebP de até 3 MB. Configure `upload_max_filesize=3M` e `post_max_size=4M` ou mais no PHP do servidor.
 
@@ -28,6 +30,12 @@ SMTP é opcional. Quando configurado, novos formulários geram uma notificação
 Todas as respostas bem-sucedidas usam `{ "data": ... }`; erros usam `{ "error": { "message": "...", "fields": {} } }`. Rotas públicas: `GET /api/pets`, `GET /api/pets/{id}`, `GET /api/campaigns`, `GET /api/config`, `POST /api/adoptions` e `POST /api/volunteers`. A vitrine inclui animais disponíveis e em tratamento; apenas disponíveis recebem candidatura. Campanhas ativas e concluídas permanecem públicas. O PIX só é marcado como configurado quando chave, favorecido e cidade foram explicitamente definidos.
 
 Autenticação: `GET /api/auth/session`, `POST /api/auth/login`, `POST /api/auth/logout`. Administração: CRUD de `/api/admin/pets`; listagem e alteração de status em `/api/admin/adoptions/{id}` e `/api/admin/volunteers/{id}`; `GET`, `POST` e `PATCH /api/admin/campaigns/{id}`; upload multipart `image` em `/api/admin/uploads`.
+
+O CMS publica `GET /api/content`. O painel lê `GET /api/admin/content`, salva o rascunho com `PATCH /api/admin/content` e publica ou descarta com `POST /api/admin/content/publish` e `POST /api/admin/content/discard`. Cada escrita envia a `revision` recebida na última leitura; uma edição concorrente responde `409`. Artigos com status `draft` nunca são enviados pela rota pública.
+
+A biblioteca de mídia usa `GET` e `POST /api/admin/media` e `PATCH` ou `DELETE /api/admin/media/{id}`. Remover um item apaga somente sua referência, não o objeto remoto. `GET /api/admin/integrations` informa se SMTP, R2 e PIX estão configurados, sem expor credenciais ou testar a conexão.
+
+O PIX do ambiente vale até a primeira publicação do CMS. Depois disso, as configurações publicadas no painel são a fonte dos dados de contribuição; publicar uma chave vazia desativa o PIX. Consulte o [guia do painel](../deploy/ADMIN.md) para a rotina de edição e publicação.
 
 ## Verificação
 
