@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { ArrowUpRight, Heart, Mail, MapPin, Menu, PawPrint, X } from 'lucide-react';
 import Brand from './Brand';
@@ -8,6 +8,11 @@ import { defaultNavigation } from '../data/contentFields';
 
 export default function Layout() {
     const [menuOpen, setMenuOpen] = useState(false);
+    const headerRef = useRef<HTMLElement>(null);
+    const menuButtonRef = useRef<HTMLButtonElement>(null);
+    const [compactNavigation, setCompactNavigation] = useState(false);
+    const [stackedHeader, setStackedHeader] = useState(false);
+    const [menuHeight, setMenuHeight] = useState<number>();
     const location = useLocation();
     const { content, text } = useSiteContent();
     const navigation = content.navigation || defaultNavigation;
@@ -16,6 +21,41 @@ export default function Layout() {
     const whatsappHref = whatsapp.startsWith('http')
         ? whatsapp
         : `https://wa.me/${whatsapp.replace(/\D/g, '')}`;
+    useLayoutEffect(() => {
+        const container = headerRef.current?.querySelector<HTMLElement>('.header-inner');
+        if (!container) return;
+        const measure = () => {
+            if (!container.clientWidth) return;
+            const mobile = window.innerWidth <= 880;
+            // Measure natural content width without changing the visible navigation.
+            const probe = container.cloneNode(true) as HTMLElement;
+            probe.removeAttribute('id');
+            probe.setAttribute('aria-hidden', 'true');
+            probe.inert = true;
+            probe.style.cssText =
+                'position:fixed;visibility:hidden;pointer-events:none;display:flex;width:max-content;max-width:none;inset:0 auto auto 0;';
+            const brand = probe.querySelector<HTMLElement>('.brand');
+            if (brand) brand.style.whiteSpace = 'nowrap';
+            probe.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
+            document.body.append(probe);
+            const requiredWidth = probe.getBoundingClientRect().width;
+            probe.remove();
+            const crowded = requiredWidth > container.clientWidth + 1;
+            setCompactNavigation(!mobile && crowded);
+            setStackedHeader(mobile && crowded);
+        };
+        const observer = new ResizeObserver(measure);
+        observer.observe(container);
+        let active = true;
+        void document.fonts.ready.then(() => {
+            if (active) measure();
+        });
+        measure();
+        return () => {
+            active = false;
+            observer.disconnect();
+        };
+    }, [navigation, content.values]);
     useEffect(() => {
         setMenuOpen(false);
         if (!location.hash) window.scrollTo({ top: 0, behavior: 'instant' });
@@ -41,12 +81,39 @@ export default function Layout() {
         document.title = `AdoCat — ${names[location.pathname] || (location.pathname.startsWith('/amigos/') ? 'Conheça seu novo amigo' : 'Cada vida importa')}`;
     }, [location.pathname, location.hash]);
     useEffect(() => {
+        if (!menuOpen) return;
+        const measureHeight = () => {
+            const bottom = headerRef.current?.getBoundingClientRect().bottom ?? 0;
+            setMenuHeight(Math.max(0, window.innerHeight - Math.max(0, bottom)));
+        };
+        measureHeight();
+        const observer = new ResizeObserver(measureHeight);
+        if (headerRef.current) observer.observe(headerRef.current);
         const close = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') setMenuOpen(false);
+            if (event.key === 'Escape') {
+                setMenuOpen(false);
+                menuButtonRef.current?.focus();
+            }
+        };
+        const closeOutside = (event: PointerEvent) => {
+            if (!headerRef.current?.contains(event.target as Node)) setMenuOpen(false);
+        };
+        const desktop = window.matchMedia('(min-width: 881px)');
+        const closeOnDesktop = () => {
+            if (desktop.matches) setMenuOpen(false);
         };
         window.addEventListener('keydown', close);
-        return () => window.removeEventListener('keydown', close);
-    }, []);
+        window.addEventListener('resize', measureHeight);
+        document.addEventListener('pointerdown', closeOutside);
+        desktop.addEventListener('change', closeOnDesktop);
+        return () => {
+            window.removeEventListener('keydown', close);
+            window.removeEventListener('resize', measureHeight);
+            observer.disconnect();
+            document.removeEventListener('pointerdown', closeOutside);
+            desktop.removeEventListener('change', closeOnDesktop);
+        };
+    }, [menuOpen]);
 
     return (
         <>
@@ -73,13 +140,20 @@ export default function Layout() {
                     </span>
                 </div>
             </div>
-            <header className="site-header">
+            <header
+                className={`site-header${compactNavigation ? ' is-compact' : ''}${stackedHeader ? ' is-stacked' : ''}`}
+                ref={headerRef}
+            >
                 <div className="container header-inner">
                     <Brand />
                     <nav
                         aria-label="Navegação principal"
                         id="main-navigation"
                         className={`main-nav${menuOpen ? ' is-open' : ''}`}
+                        style={menuOpen ? { maxHeight: menuHeight } : undefined}
+                        onClick={(event) => {
+                            if ((event.target as HTMLElement).closest('a')) setMenuOpen(false);
+                        }}
                     >
                         {navigation
                             .filter((item) => item.visible)
@@ -107,6 +181,7 @@ export default function Layout() {
                         <Heart size={16} /> {text('site.donateLabel', 'Quero ajudar')}
                     </SiteLink>
                     <button
+                        ref={menuButtonRef}
                         className="menu-toggle icon-button"
                         aria-expanded={menuOpen}
                         aria-controls="main-navigation"

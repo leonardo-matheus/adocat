@@ -33,8 +33,29 @@
     background: transparent;
     font: inherit;
     cursor: pointer;
+    min-height: 44px;
 }
 
 .content-load-error {
     background: #7a3427;
+}
+
+@media (max-width: 600px) {
+    .content-preview-bar,
+    .content-load-error {
+        padding: 12px 16px;
+        justify-content: flex-start;
+    }
+    .content-preview-bar > div {
+        width: 100%;
+    }
+    .content-preview-bar button {
+        flex: 1 1 auto;
+    }
+}
+
+@media (max-height: 500px) {
+    .content-preview-bar {
+        position: static;
+    }
 }

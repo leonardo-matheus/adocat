@@ -58,6 +58,8 @@ No Windows, os testes E2E usam o Microsoft Edge instalado no sistema por padrão
 npx playwright install chromium
 ```
 
+A suíte E2E inclui uma matriz de responsividade entre 320 e 1920 px, orientação paisagem, menus com textos longos publicados pelo CMS, áreas de toque e modais com rolagem. Também verifica a navegação pelas dez áreas do painel e o formulário de animais em celular e tablet. Esses testes usam dimensões simuladas no navegador.
+
 Para usar esse Chromium também no Windows, instale-o com o comando acima e defina `PLAYWRIGHT_CHANNEL=chromium`. No PowerShell:
 
 ```powershell

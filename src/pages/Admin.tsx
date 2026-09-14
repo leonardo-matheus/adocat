@@ -118,6 +118,8 @@ export default function Admin() {
     const [search, setSearch] = useState('');
     const [cmsDirty, setCmsDirty] = useState(false);
     const modalRef = useRef<HTMLFormElement>(null);
+    const sidebarRef = useRef<HTMLElement>(null);
+    const menuButtonRef = useRef<HTMLButtonElement>(null);
     const mounted = useRef(true);
     const load = async () => {
         setLoading(true);
@@ -199,6 +201,40 @@ export default function Admin() {
             previous?.focus();
         };
     }, [Boolean(petDraft || campaignDraft)]);
+    useEffect(() => {
+        if (!menu) return;
+        const closeMenu = () => setMenu(false);
+        const focusFrame = window.requestAnimationFrame(() => {
+            const activeItem =
+                sidebarRef.current?.querySelector<HTMLButtonElement>('nav button.active') ??
+                sidebarRef.current?.querySelector<HTMLButtonElement>('nav button');
+            activeItem?.focus();
+        });
+        const onPointerDown = (event: PointerEvent) => {
+            const target = event.target as Node;
+            if (!sidebarRef.current?.contains(target) && !menuButtonRef.current?.contains(target)) {
+                closeMenu();
+            }
+        };
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            closeMenu();
+            menuButtonRef.current?.focus();
+        };
+        const onResize = () => {
+            closeMenu();
+            menuButtonRef.current?.focus();
+        };
+        document.addEventListener('pointerdown', onPointerDown);
+        document.addEventListener('keydown', onKeyDown);
+        window.addEventListener('resize', onResize);
+        return () => {
+            window.cancelAnimationFrame(focusFrame);
+            document.removeEventListener('pointerdown', onPointerDown);
+            document.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('resize', onResize);
+        };
+    }, [menu]);
     const go = (next: Tab) => {
         if (
             cmsDirty &&
@@ -208,6 +244,7 @@ export default function Admin() {
         }
         setTab(next);
         setMenu(false);
+        if (menu) menuButtonRef.current?.focus();
     };
     const signOut = async () => {
         if (
@@ -327,7 +364,11 @@ export default function Admin() {
     );
     return (
         <div className="admin-page">
-            <aside className={`admin-sidebar ${menu ? 'open' : ''}`}>
+            <aside
+                className={`admin-sidebar ${menu ? 'open' : ''}`}
+                id="admin-navigation"
+                ref={sidebarRef}
+            >
                 <div className="admin-brand">
                     <PawPrint />
                     <strong>AdoCat</strong>
@@ -358,7 +399,10 @@ export default function Admin() {
                     <button
                         className="admin-menu"
                         onClick={() => setMenu(!menu)}
-                        aria-label="Abrir menu"
+                        aria-label={menu ? 'Fechar menu' : 'Abrir menu'}
+                        aria-controls="admin-navigation"
+                        aria-expanded={menu}
+                        ref={menuButtonRef}
                     >
                         <Menu />
                     </button>
