@@ -1,0 +1,77 @@
+name: Deploy GitHub Pages
+
+on:
+    push:
+        branches:
+            - main
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: pages
+    cancel-in-progress: false
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            pages: read
+        timeout-minutes: 15
+        steps:
+            - name: Baixar o código
+              uses: actions/checkout@v4
+
+            - name: Configurar o Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+
+            - name: Instalar dependências
+              run: npm ci
+
+            - name: Executar testes
+              run: npm test
+
+            - name: Configurar o GitHub Pages
+              id: pages
+              uses: actions/configure-pages@v5
+
+            - name: Gerar o site estático
+              run: npm run build:pages
+              env:
+                  VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+                  VITE_DATA_MODE: demo
+                  VITE_ROUTER_MODE: hash
+
+            - name: Instalar o Chromium
+              run: npx playwright install --with-deps chromium
+
+            - name: Testar a versão do Pages
+              run: npm run test:pages
+              env:
+                  PAGES_TEST_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+                  PLAYWRIGHT_CHANNEL: chromium
+
+            - name: Enviar artefato do site
+              uses: actions/upload-pages-artifact@v3
+              with:
+                  path: dist
+
+    deploy:
+        permissions:
+            pages: write
+            id-token: write
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        needs: build
+        steps:
+            - name: Publicar no GitHub Pages
+              id: deployment
+              uses: actions/deploy-pages@v4
