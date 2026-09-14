@@ -1,5 +1,5 @@
 import { ArrowRight, HeartHandshake, LoaderCircle, PawPrint } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { SiteLink, useSiteContent } from '../lib/site-content';
 
 export function LoadingState({ label = 'Preparando tudo para você…' }: { label?: string }) {
     return (
@@ -26,21 +26,25 @@ export function ErrorState({ message, retry }: { message: string; retry?: () => 
 }
 
 export function JoinBanner() {
+    const { text } = useSiteContent();
     return (
         <section className="join-section container">
             <div className="join-icon">
                 <HeartHandshake size={42} strokeWidth={1.3} />
             </div>
             <div>
-                <span className="eyebrow">TODO GESTO CONTA</span>
-                <h2>Tem muitas formas de fazer parte.</h2>
+                <span className="eyebrow">{text('join.eyebrow', 'TODO GESTO CONTA')}</span>
+                <h2>{text('join.title', 'Tem muitas formas de fazer parte.')}</h2>
                 <p>
-                    Uma carona, um lar temporário, um pouco do seu tempo. Juntos, vamos mais longe.
+                    {text(
+                        'join.description',
+                        'Uma carona, um lar temporário, um pouco do seu tempo. Juntos, vamos mais longe.',
+                    )}
                 </p>
             </div>
-            <Link to="/voluntariado" className="button button-dark">
-                Quero ser voluntário <ArrowRight size={17} />
-            </Link>
+            <SiteLink href={text('join.ctaHref', '/voluntariado')} className="button button-dark">
+                {text('join.ctaLabel', 'Quero ser voluntário')} <ArrowRight size={17} />
+            </SiteLink>
         </section>
     );
 }

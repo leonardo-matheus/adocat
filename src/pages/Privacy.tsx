@@ -1,8 +1,11 @@
 import { ArrowLeft, Mail, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { isDemoMode } from '../lib/api';
+import { useSiteContent } from '../lib/site-content';
 
 export default function Privacy() {
+    const { content, text } = useSiteContent();
+    const email = content.integrations.email;
     return (
         <div className="privacy-page">
             <div className="container privacy-shell">
@@ -13,11 +16,15 @@ export default function Privacy() {
                     <div className="privacy-icon">
                         <ShieldCheck />
                     </div>
-                    <span className="eyebrow">Privacidade e transparência</span>
-                    <h1>Seus dados merecem cuidado.</h1>
+                    <span className="eyebrow">
+                        {text('privacy.eyebrow', 'Privacidade e transparência')}
+                    </span>
+                    <h1>{text('privacy.title', 'Seus dados merecem cuidado.')}</h1>
                     <p>
-                        Esta página explica, em linguagem simples, como os dados informados nos
-                        formulários da AdoCat podem ser usados.
+                        {text(
+                            'privacy.description',
+                            'Esta página explica, em linguagem simples, como os dados informados nos formulários da AdoCat podem ser usados.',
+                        )}
                     </p>
                 </header>
                 {isDemoMode && (
@@ -32,61 +39,67 @@ export default function Privacy() {
                 )}
                 <article className="privacy-content">
                     <section>
-                        <h2>Quais dados são coletados</h2>
+                        <h2>{text('privacy.dataTitle', 'Quais dados são coletados')}</h2>
                         <p>
-                            Nos formulários de adoção e voluntariado, podem ser solicitados nome,
-                            e-mail, telefone, cidade, informações sobre moradia, rotina,
-                            disponibilidade e interesses. No painel restrito, também são tratados
-                            dados necessários à gestão dos animais, campanhas e inscrições.
+                            {text(
+                                'privacy.dataText',
+                                'Nos formulários de adoção e voluntariado, podem ser solicitados nome, e-mail, telefone, cidade, informações sobre moradia, rotina, disponibilidade e interesses. No painel restrito, também são tratados dados necessários à gestão dos animais, campanhas e inscrições.',
+                            )}
                         </p>
                     </section>
                     <section>
-                        <h2>Por que esses dados são usados</h2>
+                        <h2>{text('privacy.purposeTitle', 'Por que esses dados são usados')}</h2>
                         <p>
-                            Os dados servem para avaliar a compatibilidade e a segurança de uma
-                            adoção, organizar o contato com voluntários, responder às solicitações e
-                            administrar as atividades da ONG. O tratamento deve se limitar a essas
-                            finalidades.
+                            {text(
+                                'privacy.purposeText',
+                                'Os dados servem para avaliar a compatibilidade e a segurança de uma adoção, organizar o contato com voluntários, responder às solicitações e administrar as atividades da ONG. O tratamento deve se limitar a essas finalidades.',
+                            )}
                         </p>
                     </section>
                     <section>
-                        <h2>Compartilhamento e proteção</h2>
+                        <h2>{text('privacy.sharingTitle', 'Compartilhamento e proteção')}</h2>
                         <p>
-                            Os dados não devem ser comercializados. O acesso deve ficar limitado às
-                            pessoas autorizadas da AdoCat e aos fornecedores técnicos necessários
-                            para operar a plataforma, sujeitos a medidas de segurança e
-                            confidencialidade.
+                            {text(
+                                'privacy.sharingText',
+                                'Os dados não devem ser comercializados. O acesso deve ficar limitado às pessoas autorizadas da AdoCat e aos fornecedores técnicos necessários para operar a plataforma, sujeitos a medidas de segurança e confidencialidade.',
+                            )}
                         </p>
                     </section>
                     <section>
-                        <h2>Seus direitos pela LGPD</h2>
+                        <h2>{text('privacy.rightsTitle', 'Seus direitos pela LGPD')}</h2>
                         <p>
-                            Você pode pedir confirmação do tratamento, acesso, correção, informação
-                            sobre compartilhamento, eliminação quando aplicável ou revogação do
-                            consentimento. Alguns registros podem precisar ser mantidos quando
-                            houver obrigação legal ou outra base legítima.
+                            {text(
+                                'privacy.rightsText',
+                                'Você pode pedir confirmação do tratamento, acesso, correção, informação sobre compartilhamento, eliminação quando aplicável ou revogação do consentimento. Alguns registros podem precisar ser mantidos quando houver obrigação legal ou outra base legítima.',
+                            )}
                         </p>
                     </section>
                     <section>
-                        <h2>Retenção e versão desta política</h2>
+                        <h2>
+                            {text('privacy.retentionTitle', 'Retenção e versão desta política')}
+                        </h2>
                         <p>
-                            Os prazos de retenção, responsáveis formais, fornecedores e
-                            procedimentos de atendimento deverão ser definidos pela AdoCat antes da
-                            publicação em produção. Esta versão é um texto inicial para validação
-                            jurídica e operacional.
+                            {text(
+                                'privacy.retentionText',
+                                'Os prazos de retenção, responsáveis formais, fornecedores e procedimentos de atendimento deverão ser definidos pela AdoCat antes da publicação em produção. Esta versão é um texto inicial para validação jurídica e operacional.',
+                            )}
                         </p>
                     </section>
-                    <section className="privacy-contact">
-                        <Mail />
-                        <div>
-                            <h2>Fale sobre seus dados</h2>
-                            <p>
-                                Para dúvidas ou solicitações, entre em contato pelo e-mail{' '}
-                                <a href="mailto:adocat.adocao@gmail.com">adocat.adocao@gmail.com</a>
-                                .
-                            </p>
-                        </div>
-                    </section>
+                    {email && (
+                        <section className="privacy-contact">
+                            <Mail />
+                            <div>
+                                <h2>{text('privacy.contactTitle', 'Fale sobre seus dados')}</h2>
+                                <p>
+                                    {text(
+                                        'privacy.contactText',
+                                        'Para dúvidas ou solicitações, entre em contato pelo e-mail',
+                                    )}{' '}
+                                    <a href={`mailto:${email}`}>{email}</a>.
+                                </p>
+                            </div>
+                        </section>
+                    )}
                 </article>
             </div>
         </div>

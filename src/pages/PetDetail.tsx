@@ -17,8 +17,10 @@ import { publicAsset } from '../lib/assets';
 import { useAsync, useFavorites } from '../lib/hooks';
 import { ErrorState, LoadingState } from '../components/Shared';
 import PetCard from '../components/PetCard';
+import { SiteLink, useSiteContent } from '../lib/site-content';
 
 export default function PetDetail() {
+    const { text } = useSiteContent();
     const { petId = '' } = useParams();
     const { data: pet, loading, error, retry } = useAsync(() => api.getPet(petId), [petId]);
     const others = useAsync(api.getPets);
@@ -56,7 +58,7 @@ export default function PetDetail() {
     return (
         <div className="detail-page container">
             <Link to="/adotar" className="back-link">
-                <ArrowLeft size={16} /> Todos os amigos
+                <ArrowLeft size={16} /> {text('petDetail.backLabel', 'Todos os amigos')}
             </Link>
             <div className="pet-detail-grid">
                 <div className="detail-photo">
@@ -65,7 +67,8 @@ export default function PetDetail() {
                         alt={`${pet.name}, ${pet.species === 'cat' ? 'gato' : 'cão'} em busca de um lar`}
                     />
                     <span className="detail-photo-note">
-                        <PawPrint size={15} /> Uma vida inteira de carinho pela frente.
+                        <PawPrint size={15} />{' '}
+                        {text('petDetail.photoCaption', 'Uma vida inteira de carinho pela frente.')}
                     </span>
                 </div>
                 <div className="detail-copy">
@@ -79,7 +82,7 @@ export default function PetDetail() {
                               ? 'Recebendo cuidados'
                               : 'Já encontrou um lar'}
                     </span>
-                    <span className="eyebrow">OI, EU SOU</span>
+                    <span className="eyebrow">{text('petDetail.eyebrow', 'OI, EU SOU')}</span>
                     <h1>
                         {pet.name}
                         <Heart size={34} strokeWidth={1.3} />
@@ -103,7 +106,7 @@ export default function PetDetail() {
                             </strong>
                         </div>
                     </div>
-                    <h2>Um pouquinho de mim</h2>
+                    <h2>{text('petDetail.storyTitle', 'Um pouquinho de mim')}</h2>
                     <p className="pet-story">{pet.description}</p>
                     <div className="detail-tags">
                         {pet.temperament.map((trait) => (
@@ -125,7 +128,8 @@ export default function PetDetail() {
                     <div className="detail-actions">
                         {pet.status === 'available' ? (
                             <Link className="button button-primary" to={`/adotar/${pet.id}`}>
-                                Quero adotar {pet.name} <ArrowUpRight size={18} />
+                                {text('petDetail.adoptLabel', 'Quero adotar')} {pet.name}{' '}
+                                <ArrowUpRight size={18} />
                             </Link>
                         ) : (
                             <Link
@@ -133,8 +137,8 @@ export default function PetDetail() {
                                 to={pet.status === 'treatment' ? '/doar' : '/adotar'}
                             >
                                 {pet.status === 'treatment'
-                                    ? 'Ajudar com os cuidados'
-                                    : 'Conhecer outros amigos'}
+                                    ? text('petDetail.treatmentLabel', 'Ajudar com os cuidados')
+                                    : text('petDetail.othersLabel', 'Conhecer outros amigos')}
                                 <Heart size={17} />
                             </Link>
                         )}
@@ -167,11 +171,22 @@ export default function PetDetail() {
                     <div className="adoption-reminder">
                         <House size={24} />
                         <p>
-                            Um lar seguro e um compromisso para a vida.
+                            {text(
+                                'petDetail.reminder',
+                                'Um lar seguro e um compromisso para a vida.',
+                            )}
                             <br />
-                            <Link to="/conteudos/primeiros-dias-em-casa">
-                                Saiba como se preparar para a adoção.
-                            </Link>
+                            <SiteLink
+                                href={text(
+                                    'petDetail.reminderHref',
+                                    '/conteudos/primeiros-dias-em-casa',
+                                )}
+                            >
+                                {text(
+                                    'petDetail.reminderLabel',
+                                    'Saiba como se preparar para a adoção.',
+                                )}
+                            </SiteLink>
                         </p>
                     </div>
                     {isDemoMode && (
@@ -184,12 +199,14 @@ export default function PetDetail() {
             <section className="more-friends">
                 <div className="section-heading">
                     <div>
-                        <span className="eyebrow">MAIS OLHARES, MAIS HISTÓRIAS</span>
-                        <h2>Você também pode se encantar.</h2>
+                        <span className="eyebrow">
+                            {text('petDetail.relatedEyebrow', 'MAIS OLHARES, MAIS HISTÓRIAS')}
+                        </span>
+                        <h2>{text('petDetail.relatedTitle', 'Você também pode se encantar.')}</h2>
                     </div>
-                    <Link className="text-link" to="/adotar">
-                        Ver todos <ArrowUpRight size={18} />
-                    </Link>
+                    <SiteLink className="text-link" href={text('petDetail.relatedHref', '/adotar')}>
+                        {text('petDetail.relatedLabel', 'Ver todos')} <ArrowUpRight size={18} />
+                    </SiteLink>
                 </div>
                 <div className="pet-grid">
                     {others.data

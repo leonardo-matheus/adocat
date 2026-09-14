@@ -229,6 +229,66 @@ try {
     await page.reload({ waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: 'Faísca', exact: true }).waitFor();
 
+    await page.goto(`${siteURL}#/admin/entrar`);
+    await page.getByLabel('E-mail', { exact: true }).fill('demo@adocat.org');
+    await page.locator('#login-password').fill('adocat-demo');
+    await page.getByRole('button', { name: 'Entrar no painel' }).click();
+    await page.getByRole('heading', { name: 'Visão geral' }).waitFor();
+    await page
+        .locator('.admin-sidebar')
+        .getByRole('button', { name: 'Menus e botões', exact: true })
+        .click();
+    const menuItem = page.locator('.cms-nav-row').first();
+    await menuItem.getByLabel('Nome', { exact: true }).fill('Conteúdo gerenciado');
+    await menuItem.getByLabel('Destino', { exact: true }).fill('/sobre');
+    await menuItem.getByLabel('Nova aba', { exact: true }).check();
+    await page.getByRole('button', { name: 'Salvar rascunho', exact: true }).click();
+    await page.getByText('Rascunho salvo.', { exact: true }).waitFor();
+    await page
+        .locator('.admin-sidebar')
+        .getByRole('button', { name: 'Conteúdo do site', exact: true })
+        .click();
+    await page.getByRole('button', { name: /Página inicial/ }).click();
+    await page.getByLabel('Link institucional', { exact: true }).fill('Voltar à apresentação');
+    await page.getByLabel('Destino do link institucional', { exact: true }).fill('#main-content');
+    await page.getByRole('button', { name: 'Ver prévia', exact: true }).click();
+    await page.getByText('Prévia do rascunho', { exact: true }).waitFor();
+    assert.equal(
+        new URL(page.url()).pathname,
+        basePath,
+        'A prévia precisa permanecer na base do Pages.',
+    );
+    await page.getByRole('button', { name: 'Voltar ao painel' }).click();
+    await page
+        .locator('.admin-sidebar')
+        .getByRole('button', { name: 'Conteúdo do site', exact: true })
+        .click();
+    await page.getByRole('button', { name: 'Publicar alterações' }).click();
+    await page.locator('.cms-message.is-success').waitFor();
+    await page.goto(siteURL);
+    const newTab = page.waitForEvent('popup');
+    await page
+        .locator('#main-navigation')
+        .getByRole('link', { name: 'Conteúdo gerenciado' })
+        .click();
+    const popup = await newTab;
+    await popup.getByRole('heading', { level: 1 }).waitFor();
+    assert.equal(
+        new URL(popup.url()).pathname,
+        basePath,
+        'Menu em nova aba precisa preservar o caminho base.',
+    );
+    assert.match(new URL(popup.url()).hash, /^#\/sobre/);
+    await popup.close();
+    await page.getByRole('link', { name: 'Voltar à apresentação', exact: true }).click();
+    assert.match(
+        new URL(page.url()).hash,
+        /^#\/#main-content$/,
+        'Âncora editável precisa preservar a rota hash.',
+    );
+    await page.getByRole('heading', { level: 1 }).filter({ hasText: 'Todo amor' }).waitFor();
+    await page.goto(`${siteURL}#/amigos/faisca`, { waitUntil: 'networkidle' });
+
     const manifestHref = await page.locator('link[rel="manifest"]').getAttribute('href');
     assert(manifestHref, 'A página precisa declarar um manifesto.');
     const manifestURL = new URL(manifestHref, page.url());

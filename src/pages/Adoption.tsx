@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, CheckCircle2, Heart, ShieldCheck } from 'lucide-
 import { api, isDemoMode } from '../lib/api';
 import { publicAsset } from '../lib/assets';
 import type { Pet } from '../lib/types';
+import { useSiteContent } from '../lib/site-content';
 
 type FormState = {
     name: string;
@@ -31,6 +32,7 @@ const initialForm: FormState = {
 };
 
 export default function Adoption() {
+    const { text } = useSiteContent();
     const { petId = '' } = useParams();
     const [pet, setPet] = useState<Pet | null>(null);
     const [form, setForm] = useState(initialForm);
@@ -155,10 +157,12 @@ export default function Adoption() {
                 <section className="form-panel">
                     <div className="form-heading">
                         <span className="eyebrow">Formulário de interesse</span>
-                        <h2>Conte um pouco sobre você</h2>
+                        <h2>{text('adoption.title', 'Conte um pouco sobre você')}</h2>
                         <p>
-                            Leva cerca de 4 minutos. A inscrição não garante a adoção e será
-                            avaliada com carinho pela equipe.
+                            {text(
+                                'adoption.description',
+                                'Leva cerca de 4 minutos. A inscrição não garante a adoção e será avaliada com carinho pela equipe.',
+                            )}
                         </p>
                     </div>
                     <form onSubmit={submit} className="adocat-form">

@@ -1,12 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { ArrowUpRight, Heart, Mail, MapPin, Menu, PawPrint, X } from 'lucide-react';
 import Brand from './Brand';
 import { isDemoMode } from '../lib/api';
+import { SiteLink, useSiteContent } from '../lib/site-content';
+import { defaultNavigation } from '../data/contentFields';
 
 export default function Layout() {
     const [menuOpen, setMenuOpen] = useState(false);
     const location = useLocation();
+    const { content, text } = useSiteContent();
+    const navigation = content.navigation || defaultNavigation;
+    const email = content.integrations.email;
+    const whatsapp = content.integrations.whatsapp;
+    const whatsappHref = whatsapp.startsWith('http')
+        ? whatsapp
+        : `https://wa.me/${whatsapp.replace(/\D/g, '')}`;
     useEffect(() => {
         setMenuOpen(false);
         if (!location.hash) window.scrollTo({ top: 0, behavior: 'instant' });
@@ -56,10 +65,11 @@ export default function Layout() {
             <div className="utility-bar">
                 <div className="container utility-inner">
                     <span>
-                        <MapPin size={13} /> Araraquara e Matão, SP
+                        <MapPin size={13} /> {text('site.location', 'Araraquara e Matão, SP')}
                     </span>
                     <span>
-                        Pequenas patas. Grandes recomeços. <Heart size={12} />
+                        {text('site.utilityMessage', 'Pequenas patas. Grandes recomeços.')}{' '}
+                        <Heart size={12} />
                     </span>
                 </div>
             </div>
@@ -71,17 +81,31 @@ export default function Layout() {
                         id="main-navigation"
                         className={`main-nav${menuOpen ? ' is-open' : ''}`}
                     >
-                        <NavLink to="/" end>
-                            Início
-                        </NavLink>
-                        <NavLink to="/adotar">Quero adotar</NavLink>
-                        <NavLink to="/sobre">Sobre a AdoCat</NavLink>
-                        <NavLink to="/voluntariado">Faça parte</NavLink>
-                        <NavLink to="/conteudos">Dicas e cuidados</NavLink>
+                        {navigation
+                            .filter((item) => item.visible)
+                            .map((item) => (
+                                <SiteLink
+                                    key={item.id}
+                                    href={item.href}
+                                    newTab={item.newTab}
+                                    className={
+                                        item.href === location.pathname ||
+                                        (item.href !== '/' &&
+                                            location.pathname.startsWith(item.href))
+                                            ? 'active'
+                                            : undefined
+                                    }
+                                >
+                                    {item.label}
+                                </SiteLink>
+                            ))}
                     </nav>
-                    <Link to="/doar" className="button button-primary header-donate">
-                        <Heart size={16} /> Quero ajudar
-                    </Link>
+                    <SiteLink
+                        href={text('site.donateHref', '/doar')}
+                        className="button button-primary header-donate"
+                    >
+                        <Heart size={16} /> {text('site.donateLabel', 'Quero ajudar')}
+                    </SiteLink>
                     <button
                         className="menu-toggle icon-button"
                         aria-expanded={menuOpen}
@@ -101,47 +125,82 @@ export default function Layout() {
                     <div className="footer-brand-block">
                         <Brand inverse />
                         <p>
-                            Todo amor merece um lar.
-                            <br />E todo recomeço merece uma chance.
+                            {text(
+                                'footer.tagline',
+                                'Todo amor merece um lar.\nE todo recomeço merece uma chance.',
+                            )
+                                .split('\n')
+                                .map((line, index) => (
+                                    <span key={line}>
+                                        {index > 0 && <br />}
+                                        {line}
+                                    </span>
+                                ))}
                         </p>
                         <span className="footer-location">
-                            <MapPin size={15} /> Araraquara e Matão · SP
+                            <MapPin size={15} /> {text('site.location', 'Araraquara e Matão, SP')}
                         </span>
                     </div>
                     <div className="footer-links">
-                        <h3>Encontre seu caminho</h3>
-                        <Link to="/adotar">Quero adotar</Link>
-                        <Link to="/doar">Faça uma doação</Link>
-                        <Link to="/voluntariado">Seja voluntário</Link>
-                        <Link to="/sobre">Conheça a AdoCat</Link>
+                        <h3>{text('footer.linksTitle', 'Encontre seu caminho')}</h3>
+                        {navigation
+                            .filter((item) => item.visible && item.href !== '/')
+                            .slice(0, 4)
+                            .map((item) => (
+                                <SiteLink key={item.id} href={item.href} newTab={item.newTab}>
+                                    {item.label}
+                                </SiteLink>
+                            ))}
                     </div>
                     <div className="footer-links">
-                        <h3>Vamos conversar?</h3>
-                        <a href="mailto:adocat.adocao@gmail.com">
-                            <Mail size={15} /> adocat.adocao@gmail.com
-                        </a>
-                        <a
-                            href="https://wa.me/5516997587596"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            WhatsApp: (16) 99758-7596 <ArrowUpRight size={14} />
-                        </a>
-                        <Link to="/conteudos">
-                            Dicas para cuidar com amor <ArrowUpRight size={14} />
-                        </Link>
+                        <h3>{text('footer.contactTitle', 'Vamos conversar?')}</h3>
+                        {email && (
+                            <a href={`mailto:${email}`}>
+                                <Mail size={15} /> {email}
+                            </a>
+                        )}
+                        {whatsapp && (
+                            <a href={whatsappHref} target="_blank" rel="noopener noreferrer">
+                                WhatsApp <ArrowUpRight size={14} />
+                            </a>
+                        )}
+                        {content.integrations.instagram && (
+                            <a
+                                href={content.integrations.instagram}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                Instagram <ArrowUpRight size={14} />
+                            </a>
+                        )}
+                        {content.integrations.facebook && (
+                            <a
+                                href={content.integrations.facebook}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                Facebook <ArrowUpRight size={14} />
+                            </a>
+                        )}
+                        <SiteLink href={text('footer.tipsHref', '/conteudos')}>
+                            {text('footer.tipsLabel', 'Dicas para cuidar com amor')}{' '}
+                            <ArrowUpRight size={14} />
+                        </SiteLink>
                     </div>
                 </div>
                 <div className="container footer-bottom">
                     <span>
-                        © {new Date().getFullYear()} AdoCat. Feito com cuidado{' '}
+                        © {new Date().getFullYear()}{' '}
+                        {text('footer.copyright', 'AdoCat. Feito com cuidado')}{' '}
                         <PawPrint size={13} />
                     </span>
                     <div>
-                        <Link to="/privacidade">Privacidade</Link>
-                        <Link to="/admin">
-                            Área da equipe <ArrowUpRight size={13} />
-                        </Link>
+                        <SiteLink href={text('footer.privacyHref', '/privacidade')}>
+                            {text('footer.privacyLabel', 'Privacidade')}
+                        </SiteLink>
+                        <SiteLink href={text('footer.teamHref', '/admin')}>
+                            {text('footer.teamLabel', 'Área da equipe')} <ArrowUpRight size={13} />
+                        </SiteLink>
                     </div>
                 </div>
                 {isDemoMode && (

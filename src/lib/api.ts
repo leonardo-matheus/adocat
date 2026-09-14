@@ -1,4 +1,6 @@
 import { initialCampaigns, initialPets } from '../data/seed';
+import { defaultContent, resolveContent, validateContent, isSafeImage } from './content';
+import type { ContentState, IntegrationStatus, MediaItem, SiteContent } from './content';
 import type {
     AdoptionApplication,
     AdoptionPayload,
@@ -14,6 +16,8 @@ export const isDemoMode = import.meta.env.VITE_DATA_MODE !== 'api';
 const API_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const STORAGE_KEY = 'adocat-demo-v1';
 const SESSION_KEY = 'adocat-demo-session';
+const CONTENT_KEY = 'adocat-content-v1';
+const MEDIA_KEY = 'adocat-media-v1';
 let csrfToken: string | undefined;
 
 type DemoDatabase = {
@@ -68,6 +72,67 @@ function requireDemoSession() {
     }
 }
 
+function readContentState(): ContentState {
+    const stored = localStorage.getItem(CONTENT_KEY);
+    if (stored) {
+        const state = JSON.parse(stored) as ContentState;
+        return {
+            ...state,
+            draft: resolveContent(state.draft),
+            published: resolveContent(state.published),
+        };
+    }
+    return {
+        draft: structuredClone(defaultContent),
+        published: structuredClone(defaultContent),
+        revision: 0,
+        updatedAt: null,
+        publishedAt: null,
+    };
+}
+
+function saveLocalContent(key: string, value: unknown) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+        throw new Error(
+            'Não foi possível salvar. O armazenamento do navegador está cheio ou bloqueado. Use imagens menores ou conecte a API.',
+        );
+    }
+}
+
+function updateLocalContent(revision: number, update: (state: ContentState) => void): ContentState {
+    requireDemoSession();
+    const state = readContentState();
+    if (revision !== state.revision)
+        throw new Error(
+            'O conteúdo foi alterado em outra aba. Recarregue o painel antes de continuar.',
+        );
+    update(state);
+    state.revision += 1;
+    state.updatedAt = new Date().toISOString();
+    saveLocalContent(CONTENT_KEY, state);
+    window.dispatchEvent(new Event('adocat-content-updated'));
+    return structuredClone(state);
+}
+
+function readMedia(): MediaItem[] {
+    const stored = localStorage.getItem(MEDIA_KEY);
+    if (stored) return JSON.parse(stored) as MediaItem[];
+    return [
+        ...new Set([
+            ...initialPets.map((pet) => pet.image),
+            ...initialCampaigns.map((campaign) => campaign.image),
+        ]),
+    ].map((url, index) => ({
+        id: `original-${index}`,
+        url,
+        name: url.split('/').at(-1) || 'Imagem do site',
+        alt: '',
+        createdAt: new Date(0).toISOString(),
+    }));
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 15000);
@@ -80,7 +145,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         const response = await fetch(`${API_URL}${path}`, {
             ...options,
             headers,
-            credentials: 'same-origin',
+            credentials: 'include',
             signal: controller.signal,
         });
         const payload = await response.json().catch(() => null);
@@ -149,7 +214,16 @@ export const api = {
         return isDemoMode ? readDatabase().campaigns : request('/campaigns');
     },
     async getConfig(): Promise<PublicConfig> {
-        return isDemoMode ? { pixConfigured: false } : request('/config');
+        if (!isDemoMode) return request('/config');
+        const settings = readContentState().published.integrations;
+        return {
+            pixConfigured: Boolean(
+                settings.pixKey && settings.donationRecipient && settings.donationCity,
+            ),
+            pixKey: settings.pixKey || null,
+            donationRecipient: settings.donationRecipient || null,
+            donationCity: settings.donationCity || null,
+        };
     },
     async submitAdoption(payload: AdoptionPayload): Promise<AdoptionApplication> {
         if (!isDemoMode) return mutate('/adoptions', 'POST', payload);
@@ -357,5 +431,128 @@ export const api = {
             reader.onerror = () => reject(new Error('Não foi possível ler essa imagem.'));
             reader.readAsDataURL(file);
         });
+    },
+    async getContent(): Promise<SiteContent> {
+        const document = isDemoMode
+            ? readContentState().published
+            : await request<SiteContent>('/content');
+        return resolveContent(document);
+    },
+    async getAdminContent(): Promise<ContentState> {
+        if (isDemoMode) {
+            requireDemoSession();
+            return readContentState();
+        }
+        const state = await request<ContentState>('/admin/content');
+        return {
+            ...state,
+            draft: resolveContent(state.draft),
+            published: resolveContent(state.published),
+        };
+    },
+    async saveContent(document: SiteContent, revision: number): Promise<ContentState> {
+        validateContent(document, isDemoMode);
+        if (!isDemoMode) {
+            const state = await mutate<ContentState>('/admin/content', 'PATCH', {
+                document,
+                revision,
+            });
+            return {
+                ...state,
+                draft: resolveContent(state.draft),
+                published: resolveContent(state.published),
+            };
+        }
+        return updateLocalContent(revision, (state) => {
+            state.draft = structuredClone(document);
+        });
+    },
+    async publishContent(revision: number): Promise<ContentState> {
+        if (!isDemoMode) {
+            const state = await mutate<ContentState>('/admin/content/publish', 'POST', {
+                revision,
+            });
+            window.dispatchEvent(new Event('adocat-content-updated'));
+            return {
+                ...state,
+                draft: resolveContent(state.draft),
+                published: resolveContent(state.published),
+            };
+        }
+        return updateLocalContent(revision, (state) => {
+            validateContent(state.draft, true);
+            state.published = structuredClone(state.draft);
+            state.publishedAt = new Date().toISOString();
+        });
+    },
+    async discardContent(revision: number): Promise<ContentState> {
+        if (!isDemoMode) {
+            const state = await mutate<ContentState>('/admin/content/discard', 'POST', {
+                revision,
+            });
+            return {
+                ...state,
+                draft: resolveContent(state.draft),
+                published: resolveContent(state.published),
+            };
+        }
+        return updateLocalContent(revision, (state) => {
+            state.draft = structuredClone(state.published);
+        });
+    },
+    async getMedia(): Promise<MediaItem[]> {
+        if (!isDemoMode) return request('/admin/media');
+        requireDemoSession();
+        return readMedia();
+    },
+    async addMedia(input: Pick<MediaItem, 'url' | 'name' | 'alt'>): Promise<MediaItem> {
+        if (
+            !isSafeImage(input.url, isDemoMode) ||
+            !input.name.trim() ||
+            input.name.length > 200 ||
+            input.alt.length > 500
+        )
+            throw new Error(
+                'Informe um nome e uma imagem válida. A descrição aceita até 500 caracteres.',
+            );
+        if (!isDemoMode) return mutate('/admin/media', 'POST', input);
+        requireDemoSession();
+        const item = { ...input, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+        saveLocalContent(MEDIA_KEY, [item, ...readMedia()]);
+        return item;
+    },
+    async updateMedia(id: string, input: Pick<MediaItem, 'name' | 'alt'>): Promise<MediaItem> {
+        if (!input.name.trim() || input.name.length > 200 || input.alt.length > 500)
+            throw new Error('Preencha o nome e use até 500 caracteres na descrição.');
+        if (!isDemoMode) return mutate(`/admin/media/${encodeURIComponent(id)}`, 'PATCH', input);
+        requireDemoSession();
+        const library = readMedia();
+        const item = library.find((media) => media.id === id);
+        if (!item) throw new Error('Imagem não encontrada.');
+        Object.assign(item, input);
+        saveLocalContent(MEDIA_KEY, library);
+        return item;
+    },
+    async deleteMedia(id: string): Promise<void> {
+        if (!isDemoMode) {
+            await mutate(`/admin/media/${encodeURIComponent(id)}`, 'DELETE');
+            return;
+        }
+        requireDemoSession();
+        saveLocalContent(
+            MEDIA_KEY,
+            readMedia().filter((item) => item.id !== id),
+        );
+    },
+    async getIntegrationStatus(): Promise<IntegrationStatus> {
+        if (!isDemoMode) return request('/admin/integrations');
+        requireDemoSession();
+        return {
+            mode: 'demo',
+            smtp: false,
+            storage: false,
+            pix: Boolean(readContentState().published.integrations.pixKey),
+            origin: window.location.origin,
+        };
     },
 };

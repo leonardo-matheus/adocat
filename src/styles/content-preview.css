@@ -1,0 +1,40 @@
+.content-preview-bar,
+.content-load-error {
+    padding: 12px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 12px 24px;
+    background: #143b53;
+    color: #fff;
+    font-size: 13px;
+}
+
+.content-preview-bar {
+    position: sticky;
+    top: 0;
+    z-index: 110;
+    border-bottom: 2px solid #e8bd70;
+}
+
+.content-preview-bar > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.content-preview-bar button,
+.content-load-error button {
+    padding: 7px 12px;
+    border: 1px solid #acc6d6;
+    border-radius: 8px;
+    color: #fff;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+}
+
+.content-load-error {
+    background: #7a3427;
+}

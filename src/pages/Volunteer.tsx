@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { CheckCircle2, HeartHandshake, PawPrint, Truck, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api, isDemoMode } from '../lib/api';
+import { useSiteContent } from '../lib/site-content';
 
 const interestOptions = [
     { value: 'temporary-home', label: 'Lar temporário', icon: PawPrint },
@@ -12,6 +13,7 @@ const interestOptions = [
 ];
 
 export default function Volunteer() {
+    const { text } = useSiteContent();
     const [form, setForm] = useState({
         name: '',
         email: '',
@@ -58,15 +60,15 @@ export default function Volunteer() {
         <div className="volunteer-page">
             <section className="volunteer-hero">
                 <div className="container">
-                    <span className="eyebrow">Faça parte da rede</span>
-                    <h1>
-                        Seu tempo também
-                        <br />
-                        transforma vidas.
-                    </h1>
+                    <span className="eyebrow">
+                        {text('volunteer.eyebrow', 'Faça parte da rede')}
+                    </span>
+                    <h1>{text('volunteer.title', 'Seu tempo também transforma vidas.')}</h1>
                     <p>
-                        Há muitas maneiras de ajudar a AdoCat em Araraquara, Matão e região.
-                        Encontre a que cabe na sua rotina.
+                        {text(
+                            'volunteer.description',
+                            'Há muitas maneiras de ajudar a AdoCat em Araraquara, Matão e região. Encontre a que cabe na sua rotina.',
+                        )}
                     </p>
                 </div>
             </section>
@@ -75,22 +77,27 @@ export default function Volunteer() {
                     <section className="form-success">
                         <CheckCircle2 size={52} />
                         <span className="eyebrow">Cadastro recebido</span>
-                        <h2>Que bom ter você por perto.</h2>
+                        <h2>{text('volunteer.successTitle', 'Que bom ter você por perto.')}</h2>
                         <p>
                             {isDemoMode
                                 ? 'Cadastro salvo nesta demonstração. Nenhuma mensagem foi enviada à ONG.'
                                 : 'A equipe vai conhecer seu perfil e entrar em contato quando houver uma oportunidade compatível.'}
                         </p>
                         <Link to="/" className="button button-primary">
-                            Voltar ao início
+                            {text('volunteer.successCta', 'Voltar ao início')}
                         </Link>
                     </section>
                 ) : (
                     <section className="form-panel volunteer-form-panel">
                         <div className="form-heading">
                             <span className="eyebrow">Cadastro voluntário</span>
-                            <h2>Como você gostaria de ajudar?</h2>
-                            <p>Você pode selecionar mais de uma opção.</p>
+                            <h2>{text('volunteer.formTitle', 'Como você gostaria de ajudar?')}</h2>
+                            <p>
+                                {text(
+                                    'volunteer.formHelp',
+                                    'Você pode selecionar mais de uma opção.',
+                                )}
+                            </p>
                         </div>
                         <form className="adocat-form" onSubmit={submit}>
                             <div className="interest-grid">

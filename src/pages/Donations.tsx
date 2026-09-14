@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
     ArrowRight,
     ArrowUpRight,
@@ -20,8 +20,10 @@ import { currency, useAsync } from '../lib/hooks';
 import { createPixPayload } from '../lib/pix';
 import type { Campaign } from '../lib/types';
 import { ErrorState, LoadingState, PageHeading } from '../components/Shared';
+import { SiteLink, useSiteContent } from '../lib/site-content';
 
 export default function Donations() {
+    const { content, text, preview } = useSiteContent();
     const campaigns = useAsync(api.getCampaigns);
     const config = useAsync(api.getConfig);
     const [params] = useSearchParams();
@@ -32,6 +34,37 @@ export default function Donations() {
     const [message, setMessage] = useState('');
     const dialogRef = useRef<HTMLDialogElement>(null);
     const previousFocus = useRef<HTMLElement | null>(null);
+    const cmsPixConfigured = Boolean(
+        content.integrations.pixKey &&
+        content.integrations.donationRecipient &&
+        content.integrations.donationCity,
+    );
+    const donationConfig = useMemo(
+        () =>
+            cmsPixConfigured
+                ? {
+                      pixConfigured: true,
+                      pixKey: content.integrations.pixKey,
+                      donationRecipient: content.integrations.donationRecipient,
+                      donationCity: content.integrations.donationCity,
+                  }
+                : preview
+                  ? {
+                        pixConfigured: false,
+                        pixKey: '',
+                        donationRecipient: '',
+                        donationCity: '',
+                    }
+                  : config.data,
+        [
+            cmsPixConfigured,
+            config.data,
+            content.integrations.donationCity,
+            content.integrations.donationRecipient,
+            content.integrations.pixKey,
+            preview,
+        ],
+    );
     useEffect(() => {
         if (campaigns.data && params.get('campanha')) {
             const requested = campaigns.data.find(
@@ -59,12 +92,12 @@ export default function Donations() {
         setPix('');
         setQrCode('');
         let active = true;
-        if (selected && config.data?.pixConfigured) {
+        if (selected && donationConfig?.pixConfigured) {
             try {
                 const value = createPixPayload({
-                    key: config.data.pixKey || '',
-                    recipient: config.data.donationRecipient || '',
-                    city: config.data.donationCity || '',
+                    key: donationConfig.pixKey || '',
+                    recipient: donationConfig.donationRecipient || '',
+                    city: donationConfig.donationCity || '',
                     amount,
                 });
                 setPix(value);
@@ -89,7 +122,7 @@ export default function Donations() {
         return () => {
             active = false;
         };
-    }, [amount, selected, config.data]);
+    }, [amount, selected, donationConfig]);
     const copy = async () => {
         try {
             await navigator.clipboard.writeText(pix);
@@ -102,14 +135,21 @@ export default function Donations() {
     };
     const campaignName =
         selected && selected !== 'general' ? selected.title : 'os cuidados da AdoCat';
-    const whatsApp = `https://wa.me/5516997587596?text=${encodeURIComponent(`Olá, AdoCat! Gostaria de contribuir com ${campaignName}. Podem me informar como ajudar?`)}`;
+    const whatsappNumber = content.integrations.whatsapp;
+    const whatsappBase = whatsappNumber.startsWith('http')
+        ? whatsappNumber
+        : `https://wa.me/${whatsappNumber.replace(/\D/g, '')}`;
+    const whatsApp = `${whatsappBase}${whatsappBase.includes('?') ? '&' : '?'}text=${encodeURIComponent(`Olá, AdoCat! Gostaria de contribuir com ${campaignName}. Podem me informar como ajudar?`)}`;
 
     return (
         <div className="donations-page">
             <PageHeading
-                eyebrow="AMOR QUE SE TRANSFORMA EM CUIDADO"
-                title="Toda ajuda conta uma nova história."
-                description="Sua contribuição pode virar uma refeição, uma consulta ou a chance de um novo começo. Escolha como fazer parte."
+                eyebrow={text('donations.eyebrow', 'AMOR QUE SE TRANSFORMA EM CUIDADO')}
+                title={text('donations.title', 'Toda ajuda conta uma nova história.')}
+                description={text(
+                    'donations.description',
+                    'Sua contribuição pode virar uma refeição, uma consulta ou a chance de um novo começo. Escolha como fazer parte.',
+                )}
             />
             <section className="container donation-intro">
                 <div>
@@ -117,19 +157,20 @@ export default function Donations() {
                         <HeartHandshake size={34} />
                     </div>
                     <h2>
-                        Um pouco de você.
-                        <br />
-                        Um mundo de diferença.
+                        {text('donations.introTitle', 'Um pouco de você. Um mundo de diferença.')}
                     </h2>
                     <p>
-                        Ajude a manter os cuidados de quem ainda espera por um lar. Você escolhe o
-                        valor da sua contribuição.
+                        {text(
+                            'donations.introText',
+                            'Ajude a manter os cuidados de quem ainda espera por um lar. Você escolhe o valor da sua contribuição.',
+                        )}
                     </p>
                     <button
                         className="button button-primary"
                         onClick={() => setSelected('general')}
                     >
-                        <Heart size={17} /> Quero contribuir <ArrowUpRight size={17} />
+                        <Heart size={17} /> {text('donations.ctaLabel', 'Quero contribuir')}{' '}
+                        <ArrowUpRight size={17} />
                     </button>
                 </div>
                 <div className="donation-purpose">
@@ -138,8 +179,13 @@ export default function Donations() {
                             <Package size={22} />
                         </span>
                         <div>
-                            <h3>Barriguinhas cheias</h3>
-                            <p>Alimentação e itens de higiene para o dia a dia.</p>
+                            <h3>{text('donations.purposeOneTitle', 'Barriguinhas cheias')}</h3>
+                            <p>
+                                {text(
+                                    'donations.purposeOneText',
+                                    'Alimentação e itens de higiene para o dia a dia.',
+                                )}
+                            </p>
                         </div>
                     </article>
                     <article>
@@ -147,8 +193,13 @@ export default function Donations() {
                             <ShieldCheck size={22} />
                         </span>
                         <div>
-                            <h3>Saúde em primeiro lugar</h3>
-                            <p>Consultas, vacinas, castrações e tratamentos.</p>
+                            <h3>{text('donations.purposeTwoTitle', 'Saúde em primeiro lugar')}</h3>
+                            <p>
+                                {text(
+                                    'donations.purposeTwoText',
+                                    'Consultas, vacinas, castrações e tratamentos.',
+                                )}
+                            </p>
                         </div>
                     </article>
                     <article>
@@ -156,8 +207,13 @@ export default function Donations() {
                             <Heart size={22} />
                         </span>
                         <div>
-                            <h3>Recomeços possíveis</h3>
-                            <p>Acolhimento seguro até o encontro com uma família.</p>
+                            <h3>{text('donations.purposeThreeTitle', 'Recomeços possíveis')}</h3>
+                            <p>
+                                {text(
+                                    'donations.purposeThreeText',
+                                    'Acolhimento seguro até o encontro com uma família.',
+                                )}
+                            </p>
                         </div>
                     </article>
                 </div>
@@ -165,8 +221,12 @@ export default function Donations() {
             <section className="container campaigns-section">
                 <div className="section-heading">
                     <div>
-                        <span className="eyebrow">JUNTOS, A GENTE CONSEGUE</span>
-                        <h2>Campanhas que precisam de você.</h2>
+                        <span className="eyebrow">
+                            {text('donations.campaignsEyebrow', 'JUNTOS, A GENTE CONSEGUE')}
+                        </span>
+                        <h2>
+                            {text('donations.campaignsTitle', 'Campanhas que precisam de você.')}
+                        </h2>
                     </div>
                     {isDemoMode && <span className="mode-pill">Valores de demonstração</span>}
                 </div>
@@ -228,12 +288,19 @@ export default function Donations() {
                                             className="button button-secondary"
                                             onClick={() => setSelected(campaign)}
                                         >
-                                            Ajudar essa história <ArrowUpRight size={17} />
+                                            {text(
+                                                'donations.campaignLabel',
+                                                'Ajudar essa história',
+                                            )}{' '}
+                                            <ArrowUpRight size={17} />
                                         </button>
                                     ) : (
                                         <p className="completed-message">
-                                            <Check size={16} /> Um passo a mais, graças a cada
-                                            gesto.
+                                            <Check size={16} />{' '}
+                                            {text(
+                                                'donations.completedMessage',
+                                                'Um passo a mais, graças a cada gesto.',
+                                            )}
                                         </p>
                                     )}
                                     {campaign.externalUrl &&
@@ -244,7 +311,11 @@ export default function Donations() {
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                             >
-                                                Ver campanha oficial <ArrowUpRight size={14} />
+                                                {text(
+                                                    'donations.externalLabel',
+                                                    'Ver campanha oficial',
+                                                )}{' '}
+                                                <ArrowUpRight size={14} />
                                             </a>
                                         )}
                                 </div>
@@ -262,31 +333,38 @@ export default function Donations() {
             <section className="container transparency-note">
                 <ShieldCheck size={31} />
                 <div>
-                    <h2>Cuidado também é transparência.</h2>
+                    <h2>
+                        {text('donations.transparencyTitle', 'Cuidado também é transparência.')}
+                    </h2>
                     <p>
-                        Os valores são atualizados pela equipe da ONG após a confirmação das
-                        contribuições. Para comprovantes, prestação de contas ou doação de
-                        materiais, converse com a AdoCat.
+                        {text(
+                            'donations.transparencyText',
+                            'Os valores são atualizados pela equipe da ONG após a confirmação das contribuições. Para comprovantes, prestação de contas ou doação de materiais, converse com a AdoCat.',
+                        )}
                     </p>
-                    <a
-                        className="text-link"
-                        href="https://wa.me/5516997587596"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                    >
-                        Falar com a equipe <ArrowUpRight size={16} />
-                    </a>
+                    {whatsappNumber && (
+                        <SiteLink className="text-link" href={whatsappBase} newTab>
+                            {text('donations.contactLabel', 'Falar com a equipe')}{' '}
+                            <ArrowUpRight size={16} />
+                        </SiteLink>
+                    )}
                 </div>
             </section>
             <section className="container donation-other">
-                <h2>Seu tempo também transforma.</h2>
+                <h2>{text('donations.volunteerTitle', 'Seu tempo também transforma.')}</h2>
                 <p>
-                    Uma carona solidária, um lar temporário ou uma mão nas feiras. Tem um lugar para
-                    você nessa rede.
+                    {text(
+                        'donations.volunteerText',
+                        'Uma carona solidária, um lar temporário ou uma mão nas feiras. Tem um lugar para você nessa rede.',
+                    )}
                 </p>
-                <Link to="/voluntariado" className="button button-dark">
-                    Conheça o voluntariado <ArrowRight size={17} />
-                </Link>
+                <SiteLink
+                    href={text('donations.volunteerHref', '/voluntariado')}
+                    className="button button-dark"
+                >
+                    {text('donations.volunteerLabel', 'Conheça o voluntariado')}{' '}
+                    <ArrowRight size={17} />
+                </SiteLink>
             </section>
             <dialog
                 ref={dialogRef}
@@ -307,8 +385,12 @@ export default function Donations() {
                 <span className="dialog-heart">
                     <Heart size={26} />
                 </span>
-                <span className="eyebrow">UM GESTO DE CARINHO</span>
-                <h2 id="donation-dialog-title">Quanto amor cabe num gesto?</h2>
+                <span className="eyebrow">
+                    {text('donations.dialogEyebrow', 'UM GESTO DE CARINHO')}
+                </span>
+                <h2 id="donation-dialog-title">
+                    {text('donations.dialogTitle', 'Quanto amor cabe num gesto?')}
+                </h2>
                 <p>Você está ajudando {campaignName}.</p>
                 <div className="amount-options">
                     {[15, 30, 50, 100].map((value) => (
@@ -337,7 +419,7 @@ export default function Donations() {
                     <LoadingState label="Consultando opções de contribuição…" />
                 ) : config.error ? (
                     <ErrorState message={config.error} retry={config.retry} />
-                ) : config.data?.pixConfigured ? (
+                ) : donationConfig?.pixConfigured ? (
                     <div className="pix-ready">
                         <h3>
                             <QrCode size={19} /> Doar com PIX
@@ -351,7 +433,7 @@ export default function Donations() {
                             />
                         )}
                         <p>
-                            Favorecido: <strong>{config.data.donationRecipient}</strong>
+                            Favorecido: <strong>{donationConfig.donationRecipient}</strong>
                         </p>
                         <label className="field">
                             <span>PIX copia e cola</span>
@@ -368,20 +450,25 @@ export default function Donations() {
                 ) : (
                     <div className="pix-pending">
                         <MessageCircle size={24} />
-                        <h3>Vamos combinar sua contribuição?</h3>
+                        <h3>
+                            {text('donations.contactTitle', 'Vamos combinar sua contribuição?')}
+                        </h3>
                         <p>
                             {isDemoMode
                                 ? 'Esta é uma demonstração. Para doar de verdade, confirme os dados de pagamento diretamente com a AdoCat.'
                                 : 'Para contribuir, fale com a equipe e confirme os dados de pagamento da AdoCat.'}
                         </p>
-                        <a
-                            className="button button-primary"
-                            href={whatsApp}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            Falar com a AdoCat <ArrowUpRight size={16} />
-                        </a>
+                        {whatsappNumber && (
+                            <a
+                                className="button button-primary"
+                                href={whatsApp}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                {text('donations.dialogContactLabel', 'Falar com a AdoCat')}{' '}
+                                <ArrowUpRight size={16} />
+                            </a>
+                        )}
                     </div>
                 )}
                 {message && (

@@ -2,6 +2,8 @@
 
 Plataforma web da ONG AdoCat para apresentar animais, receber candidaturas de adoção, organizar voluntários e divulgar campanhas. A interface pública inclui catálogo com filtros, perfis detalhados, favoritos, formulário de adoção, página de doações, conteúdo educativo e painel administrativo responsivo.
 
+O painel também reúne um CMS por página, editor de artigos, biblioteca de mídias, menus e botões configuráveis e integrações de contato e PIX. O fluxo de rascunho, prévia autenticada e publicação permite revisar o conteúdo antes de mostrá-lo aos visitantes. Consulte o [guia do painel](./deploy/ADMIN.md).
+
 [Acessar a demonstração](https://leonardo-matheus.github.io/adocat/) · [Acompanhar os deploys](https://github.com/leonardo-matheus/adocat/actions/workflows/deploy-pages.yml)
 
 O repositório vem pronto para demonstração no navegador. Os animais, histórias, campanhas e valores iniciais são ilustrativos e podem ser substituídos em `src/data/seed.ts`. As fotografias e fontes usadas no projeto estão documentadas em [ASSETS.md](./ASSETS.md).
@@ -33,7 +35,7 @@ VITE_API_URL=/api
 
 Para desenvolvimento, inicie o backend em `127.0.0.1:8080` conforme [backend/README.md](./backend/README.md) e depois execute `npm run dev`. O proxy já configurado no Vite encaminha `/api` para o PHP na porta 8080, mantendo cookies de sessão e proteção CSRF na mesma origem vista pelo navegador. Se a porta estiver ocupada, inicie o PHP em outra porta e ajuste `API_PROXY_TARGET` no `.env.local`.
 
-As credenciais de demonstração não valem no modo API. Configure credenciais administrativas próprias e todos os serviços necessários no `.env` privado do backend. SMTP é necessário para notificações por e-mail, R2 para uploads públicos de imagens e PIX para exibir dados de contribuição. Esses serviços e segredos não acompanham o repositório.
+As credenciais de demonstração não valem no modo API. Configure credenciais administrativas próprias e os serviços necessários no `.env` privado do backend. SMTP é necessário para notificações por e-mail e R2 para uploads públicos de imagens. O contato público e os dados de PIX são gerenciados em **Integrações** no painel. Segredos dos serviços não acompanham o repositório.
 
 ## Limites funcionais
 
@@ -64,6 +66,8 @@ npm run test:e2e
 ```
 
 A API possui comandos próprios de lint, testes e integração descritos em `backend/README.md`.
+
+O teste `node scripts/cms-api-smoke.mjs` verifica login, rascunho privado, publicação entre navegadores, conflitos de edição, CSRF e biblioteca de mídias contra a API real. Execute com frontend em modo API e um banco de teste: ele publica conteúdo e adiciona uma mídia. Defina `API_SITE_URL` (padrão `http://127.0.0.1:5174`), `API_ADMIN_EMAIL` e `API_ADMIN_PASSWORD` com as credenciais desse ambiente.
 
 Também há verificações de acessibilidade e capturas em `node scripts/visual-qa.mjs`, e de instalação/cache offline em `node scripts/production-smoke.mjs` (requer `npm run preview` em execução). O fluxo completo contra a API está em `node scripts/api-browser-smoke.mjs`: execute somente com banco de teste, pois cria candidaturas, voluntários e campanhas. Configure `API_SITE_URL`, `API_ADMIN_EMAIL` e `API_ADMIN_PASSWORD`; por padrão usa `http://127.0.0.1:5174` e as credenciais locais do teste de integração. Os relatórios ficam em `output/qa/`.
 

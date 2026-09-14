@@ -5,13 +5,17 @@ import {
     Check,
     ChevronRight,
     ClipboardList,
+    FileText,
     HandHeart,
     ImagePlus,
+    Images,
     LogOut,
     Megaphone,
     Menu,
+    MousePointerClick,
     PawPrint,
     Pencil,
+    Plug,
     Plus,
     Search,
     Trash2,
@@ -21,8 +25,10 @@ import { useNavigate } from 'react-router-dom';
 import { api, isDemoMode } from '../lib/api';
 import { publicAsset } from '../lib/assets';
 import type { AdoptionApplication, Campaign, Pet, VolunteerApplication } from '../lib/types';
+import CmsPanel from '../components/admin/CmsPanel';
+import type { CmsSection } from '../components/admin/CmsPanel';
 
-type Tab = 'overview' | 'pets' | 'adoptions' | 'volunteers' | 'campaigns';
+type Tab = 'overview' | 'pets' | 'adoptions' | 'volunteers' | 'campaigns' | CmsSection;
 type PetDraft = Partial<Pet> &
     Pick<
         Pet,
@@ -110,6 +116,7 @@ export default function Admin() {
     const [updatingId, setUpdatingId] = useState<string | null>(null);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [search, setSearch] = useState('');
+    const [cmsDirty, setCmsDirty] = useState(false);
     const modalRef = useRef<HTMLFormElement>(null);
     const mounted = useRef(true);
     const load = async () => {
@@ -193,10 +200,22 @@ export default function Admin() {
         };
     }, [Boolean(petDraft || campaignDraft)]);
     const go = (next: Tab) => {
+        if (
+            cmsDirty &&
+            !window.confirm('Há alterações não salvas. Deseja sair desta área e perdê-las?')
+        ) {
+            return;
+        }
         setTab(next);
         setMenu(false);
     };
     const signOut = async () => {
+        if (
+            cmsDirty &&
+            !window.confirm('Há alterações não salvas. Deseja sair do painel e perdê-las?')
+        ) {
+            return;
+        }
         setError('');
         try {
             await api.logout();
@@ -295,6 +314,11 @@ export default function Admin() {
         ['adoptions', 'Triagens', ClipboardList],
         ['volunteers', 'Voluntários', HandHeart],
         ['campaigns', 'Campanhas', Megaphone],
+        ['content', 'Conteúdo do site', FileText],
+        ['articles', 'Artigos', ClipboardList],
+        ['media', 'Mídias', Images],
+        ['navigation', 'Menus e botões', MousePointerClick],
+        ['integrations', 'Integrações', Plug],
     ] as const;
     const filteredPets = pets.filter(
         (p) =>
@@ -704,6 +728,21 @@ export default function Admin() {
                                         <Empty text="Nenhuma campanha cadastrada." />
                                     )}
                                 </section>
+                            )}
+                            {(
+                                [
+                                    'content',
+                                    'articles',
+                                    'media',
+                                    'navigation',
+                                    'integrations',
+                                ] as CmsSection[]
+                            ).includes(tab as CmsSection) && (
+                                <CmsPanel
+                                    key={tab}
+                                    section={tab as CmsSection}
+                                    onDirtyChange={setCmsDirty}
+                                />
                             )}
                         </>
                     )}

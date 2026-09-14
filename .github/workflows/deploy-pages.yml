@@ -50,6 +50,11 @@ jobs:
             - name: Instalar o Chromium
               run: npx playwright install --with-deps chromium
 
+            - name: Testar o site e o painel em desktop e celular
+              run: npm run test:e2e
+              env:
+                  PLAYWRIGHT_CHANNEL: chromium
+
             - name: Testar a versão do Pages
               run: npm run test:pages
               env:

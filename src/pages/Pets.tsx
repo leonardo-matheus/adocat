@@ -4,8 +4,10 @@ import { api, isDemoMode } from '../lib/api';
 import { useAsync, useFavorites } from '../lib/hooks';
 import PetCard from '../components/PetCard';
 import { ErrorState, JoinBanner, LoadingState, PageHeading } from '../components/Shared';
+import { useSiteContent } from '../lib/site-content';
 
 export default function Pets() {
+    const { text } = useSiteContent();
     const { data: pets, loading, error, retry } = useAsync(api.getPets);
     const [params, setParams] = useSearchParams();
     const { favorites } = useFavorites();
@@ -47,9 +49,12 @@ export default function Pets() {
     return (
         <div className="pets-page">
             <PageHeading
-                eyebrow="UM ENCONTRO PODE MUDAR TUDO"
-                title="Quem vai ganhar seu coração?"
-                description="Cada olhar guarda uma história. Encontre um amigo para escrever o próximo capítulo com você."
+                eyebrow={text('pets.eyebrow', 'UM ENCONTRO PODE MUDAR TUDO')}
+                title={text('pets.title', 'Quem vai ganhar seu coração?')}
+                description={text(
+                    'pets.description',
+                    'Cada olhar guarda uma história. Encontre um amigo para escrever o próximo capítulo com você.',
+                )}
             />
             <section className="container catalog-section">
                 <div className="catalog-toolbar">
